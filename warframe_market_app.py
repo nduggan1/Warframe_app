@@ -4,13 +4,17 @@ import plotly.graph_objects as go
 from datetime import datetime
 from dateutil import parser
 
-# Set page config with a more modern, wide layout
 st.set_page_config(page_title="Warframe Market Explorer", page_icon="🛒", layout="wide")
 
 # ---------------------------------------------
-# CSS for a watermark and a more modern feel
+# CSS for improved look and watermark
 st.markdown("""
 <style>
+body {
+    font-family: 'Helvetica Neue', sans-serif;
+    color: #333;
+}
+
 /* Watermark in the bottom-right corner */
 .watermark {
     position: fixed;
@@ -22,15 +26,38 @@ st.markdown("""
     z-index: 9999;
 }
 
-h1, h2, h3, h4, h5 {
-    font-family: 'Helvetica Neue', sans-serif;
-    color: #333;
+/* Header image styling */
+.header-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.header-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
 }
 
-.sidebar .stSelectbox label {
-    font-weight: bold;
+/* Make side sections more distinct */
+.sidebar-section {
+    background: #f9f9f9;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 20px;
 }
 
+/* Item row styling */
+.item-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.item-row img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    border-radius: 4px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,12 +67,24 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Main Title
-st.title("Warframe Market Data Explorer")
+# ---------------------------------------------
+# Load images (Make sure these files exist in the images folder in your GitHub repo)
+def get_image_base64(path):
+    # In a real scenario, you can handle exceptions if the image is missing.
+    import base64
+    with open(path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode("utf-8")
+
+# Display a header with a logo (make sure "warframe_logo.png" is in images/)
+col_logo, col_title = st.columns([0.1, 0.9])
+with col_logo:
+    # Display logo if exists
+    st.image("images/warframe_logo.png", width=50)
+with col_title:
+    st.title("Warframe Market Data Explorer")
 
 # ---------------------------------------------
-# Functions
-
 @st.cache_data(show_spinner=False)
 def get_all_items():
     url = "https://api.warframe.market/v1/items"
@@ -78,32 +117,36 @@ def get_item_stats(item_url_name):
         st.error("Failed to fetch item statistics.")
         return None
 
-def get_profitable_items():
-    # In a real scenario, implement logic to:
-    # 1. Fetch multiple items stats (e.g., from a cached dataset).
-    # 2. Calculate potential profit (sell price - buy price).
-    # 3. Consider volume (only show items with high volume).
-    # 4. Return top picks by profit margin and volume.
-    
-    # Below is a mock dataset for demonstration:
+def get_profitable_items(sort_by="profit"):
+    # Mock data: In a real scenario, fetch and calculate dynamically
     mock_items = [
-        {"name": "Volt Prime Chassis", "buy_price": 10, "sell_price": 15, "profit": 5, "volume": 120},
-        {"name": "Ash Prime Systems", "buy_price": 20, "sell_price": 28, "profit": 8, "volume": 95},
-        {"name": "Rhino Prime Neuroptics", "buy_price": 6, "sell_price": 10, "profit": 4, "volume": 200},
-        {"name": "Nova Prime Blueprint", "buy_price": 50, "sell_price": 65, "profit": 15, "volume": 30},
-        {"name": "Loki Prime Systems", "buy_price": 35, "sell_price": 50, "profit": 15, "volume": 150},
+        {"name": "Volt Prime Chassis", "buy_price": 10, "sell_price": 15, "profit": 5, "volume": 120, "icon": "icon_item_volt_prime.png"},
+        {"name": "Ash Prime Systems", "buy_price": 20, "sell_price": 28, "profit": 8, "volume": 95, "icon": "icon_item_ash_prime_systems.png"},
+        {"name": "Rhino Prime Neuroptics", "buy_price": 6, "sell_price": 10, "profit": 4, "volume": 200, "icon": "icon_item_rhino_prime_neuroptics.png"},
+        {"name": "Nova Prime Blueprint", "buy_price": 50, "sell_price": 65, "profit": 15, "volume": 30, "icon": "icon_item_nova_prime_blueprint.png"},
+        {"name": "Loki Prime Systems", "buy_price": 35, "sell_price": 50, "profit": 15, "volume": 150, "icon": "icon_item_loki_prime_systems.png"},
     ]
-    # Sort by profit and volume for demonstration
-    mock_items.sort(key=lambda x: (x["profit"], x["volume"]), reverse=True)
+    if sort_by == "profit":
+        mock_items.sort(key=lambda x: x["profit"], reverse=True)
+    elif sort_by == "volume":
+        mock_items.sort(key=lambda x: x["volume"], reverse=True)
+
     return mock_items[:5]
 
+def get_trending_items():
+    # Mock data: In a real scenario, analyze recent data to find trending items
+    trending = [
+        {"name": "Frost Prime Neuroptics", "direction": "up", "icon": "icon_item_frost_prime_neuroptics.png"},
+        {"name": "Ember Prime Blueprint", "direction": "down", "icon": "icon_item_ember_prime_blueprint.png"},
+        {"name": "Hydroid Prime Systems", "direction": "stable", "icon": "icon_item_hydroid_prime_systems.png"}
+    ]
+    return trending
+
 # ---------------------------------------------
-# Get all items for the dropdown
 item_options = get_all_items()
 item_names = [i[0] for i in item_options]
 item_url_map = {name: url_name for name, url_name in item_options}
 
-# Layout: left for main charts, right for profit suggestions
 col_main, col_side = st.columns([3,1])
 
 with col_main:
@@ -136,14 +179,30 @@ with col_main:
                     filtered_prices = []
                     filtered_volumes = []
 
+                    # Simple logic to determine direction of price change
+                    price_change_indicator = "stable"
+                    if len(avg_prices) > 1:
+                        if avg_prices[-1] > avg_prices[-2]:
+                            price_change_indicator = "up"
+                        elif avg_prices[-1] < avg_prices[-2]:
+                            price_change_indicator = "down"
+
+                    # Load direction icons (make sure they exist)
+                    direction_icons = {
+                        "up": "images/arrow_up.png",
+                        "down": "images/arrow_down.png",
+                        "stable": "images/arrow_stable.png"
+                    }
+
                     for d, p, v in zip(dates, avg_prices, volumes):
                         if date_range[0] <= d.date() <= date_range[1]:
                             filtered_dates.append(d)
                             filtered_prices.append(p)
                             filtered_volumes.append(v)
 
-                    # Display charts
                     st.subheader(f"Market Trends for {selected_item}")
+                    st.image(direction_icons[price_change_indicator], width=20)
+
                     chart_col1, chart_col2 = st.columns(2)
                     with chart_col1:
                         st.markdown("**Average Price Over Time**")
@@ -196,14 +255,32 @@ with col_main:
             st.warning("No statistics found for this item.")
 
 with col_side:
-    st.markdown("### Top Profit Opportunities")
-    st.write("Based on current market prices and volume, here are some items that might yield a good profit margin:")
+    st.markdown("### Best Profit Opportunities")
+    st.write("Pick a sorting option to find your best flip targets:")
+    sort_choice = st.selectbox("Sort by", ["profit", "volume"])
 
-    profitable_items = get_profitable_items()
-    # Display each item in a nice format
-    for pi in profitable_items:
-        st.markdown(f"**{pi['name']}**")
-        st.write(f"Buy: {pi['buy_price']}p | Sell: {pi['sell_price']}p | Profit: {pi['profit']}p | Volume: {pi['volume']}")
-        st.markdown("---")
-    
-    st.markdown("**Note:** This is an example. In a real application, this section would dynamically fetch multiple items from the Warframe Market API, calculate actual buy/sell spreads, consider volume, and pick the best flipping candidates.")
+    profitable_items = get_profitable_items(sort_by=sort_choice)
+
+    side_section = st.container()
+    with side_section:
+        for pi in profitable_items:
+            # Display item row with icon
+            st.markdown('<div class="item-row">', unsafe_allow_html=True)
+            st.image("images/" + pi["icon"], width=24)
+            st.markdown(f"**{pi['name']}**<br>Buy: {pi['buy_price']}p | Sell: {pi['sell_price']}p | Profit: {pi['profit']}p | Vol: {pi['volume']}", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("---")
+
+    # Add a trending items section
+    st.markdown("### Trending Items")
+    st.write("Items with recent upward or downward price movement:")
+    trending_items = get_trending_items()
+    for ti in trending_items:
+        st.markdown('<div class="item-row">', unsafe_allow_html=True)
+        st.image("images/" + ti["icon"], width=24)
+        direction_icon = f"images/arrow_{ti['direction']}.png"
+        st.markdown(f"**{ti['name']}** <img src='{direction_icon}' width='20' style='vertical-align:middle;'>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("#### Note:")
+    st.write("Trending items are based on recent price movement. In a real app, this would be dynamically calculated.")
+
