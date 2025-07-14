@@ -2,20 +2,23 @@ import requests, time, streamlit as st
 from datetime import datetime
 import pandas as pd
 
-# API headers
 HEADERS = {
     "accept": "application/json",
     "platform": "pc",
     "language": "en",
-    "User-Agent": "WarframeMarketSetViewer/1.0"
+    "User-Agent": "WarframeMarketSetViewer/1.3"
 }
 
-# Map dropdown label to valid item_type(s)
+# Only two valid categories with actual sets
 CATEGORY_MAP = {
-    "Warframe Sets": ["warframe"],
-    "Weapon Sets": ["primary", "secondary", "melee"],
-    "Arcane Sets": ["arcane"],
-    "Mod Sets": ["mod"]
+    "Warframe Sets": lambda name: any(wf in name.lower() for wf in [
+        "ash", "atlas", "banshee", "chroma", "ember", "equinox", "excalibur", "frost",
+        "gara", "garuda", "harrow", "hydroid", "inaros", "ivara", "khora", "limbo",
+        "lok", "mesa", "mirage", "nekros", "nezha", "nidus", "nova", "nyx", "oberon",
+        "octavia", "protea", "rhino", "saryn", "titania", "trinity", "valkyr", "vauban",
+        "volt", "wisp", "wukong", "xaku", "zephyr"
+    ]),
+    "Weapon Sets": lambda name: True  # Catch all remaining sets as weapons
 }
 
 @st.cache_data(ttl=3600)
@@ -23,13 +26,6 @@ def get_all_items():
     res = requests.get("https://api.warframe.market/v1/items", headers=HEADERS, timeout=30)
     res.raise_for_status()
     return res.json()["payload"]["items"]
-
-@st.cache_data(ttl=3600)
-def get_item_info(url_name: str):
-    res = requests.get(f"https://api.warframe.market/v1/items/{url_name}/item", headers=HEADERS, timeout=30)
-    if res.status_code != 200:
-        return None
-    return res.json()["payload"]["item"]
 
 def get_orders(url_name: str):
     res = requests.get(f"https://api.warframe.market/v1/items/{url_name}/orders", headers=HEADERS, timeout=30)
@@ -46,32 +42,30 @@ def best_online_prices(url_name: str):
 
 # ---------- Streamlit App ----------
 st.set_page_config(page_title="Warframe Market Sets", page_icon="🛒", layout="wide")
-st.title("🛒 Warframe.market – Set Scanner")
+st.title("🛒 Warframe.market – Prime Set Scanner")
 
-category = st.selectbox("Select a set category", list(CATEGORY_MAP.keys()))
+category = st.selectbox("Select a category", list(CATEGORY_MAP.keys()))
+is_match = CATEGORY_MAP[category]
 
-with st.spinner("🔍 Loading item list..."):
+with st.spinner("🔍 Loading items…"):
     all_items = get_all_items()
+    set_items = [itm for itm in all_items if itm["url_name"].endswith("_set")]
 
-# Filter to sets only (item URLs ending in '_set')
-sets = [itm for itm in all_items if itm["url_name"].endswith("_set")]
+    # Smart filtering
+    if category == "Weapon Sets":
+        filtered = [itm for itm in set_items if not CATEGORY_MAP["Warframe Sets"](itm["item_name"])]
+    else:
+        filtered = [itm for itm in set_items if is_match(itm["item_name"])]
 
-wanted_types = CATEGORY_MAP[category]
-filtered = []
-progress = st.progress(0.0, "Filtering sets...")
+if not filtered:
+    st.error("❌ No matching sets found. Try another category.")
+    st.stop()
 
-for idx, itm in enumerate(sets, start=1):
-    info = get_item_info(itm["url_name"])
-    if info and info.get("item_type") in wanted_types:
-        filtered.append(itm)
-    progress.progress(idx / len(sets))
-    time.sleep(0.05)
+st.success(f"✅ Found {len(filtered)} {category.lower()}.")
 
-st.success(f"✅ {len(filtered)} {category.lower()} found.")
-
-# Fetch market prices
+# Get prices
 data = []
-progress2 = st.progress(0.0, "Checking live orders...")
+progress = st.progress(0.0, "Checking live market prices...")
 
 for idx, itm in enumerate(filtered, start=1):
     low_sell, high_buy = best_online_prices(itm["url_name"])
@@ -80,7 +74,7 @@ for idx, itm in enumerate(filtered, start=1):
         "Lowest WTS (p)": low_sell if low_sell else "—",
         "Highest WTB (p)": high_buy if high_buy else "—"
     })
-    progress2.progress(idx / len(filtered))
+    progress.progress(idx / len(filtered))
     time.sleep(0.05)
 
 df = pd.DataFrame(sorted(data, key=lambda x: x["Set"].lower()))
