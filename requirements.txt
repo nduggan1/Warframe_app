@@ -1,4 +1,3 @@
 requests
 streamlit
-plotly
-python-dateutil
+pandas
